@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test - Inventory System</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #eee;
+        }
+        h1 { color: #00d4ff; }
+        .container {
+            background: #16213e;
+            padding: 20px;
+            border-radius: 10px;
+        }
+        #messages {
+            height: 300px;
+            overflow-y: auto;
+            background: #0f3460;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-family: 'Courier New', monospace;
+        }
+        .message {
+            padding: 5px 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+        }
+        .system { background: #533483; color: white; }
+        .stock { background: #e94560; color: white; }
+        .info { background: #0f3460; color: #00d4ff; border: 1px solid #00d4ff; }
+        
+        button {
+            background: #00d4ff;
+            color: #1a1a2e;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover { background: #00b4d8; }
+        
+        input {
+            padding: 10px;
+            width: 70%;
+            border-radius: 5px;
+            border: none;
+            margin-right: 10px;
+        }
+        
+        .status {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .connected { background: #00ff88; box-shadow: 0 0 10px #00ff88; }
+        .disconnected { background: #ff4444; box-shadow: 0 0 10px #ff4444; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📡 Inventory WebSocket Test</h1>
+        
+        <div style="margin-bottom: 20px;">
+            <span>Status: </span>
+            <span class="status" id="statusDot"></span>
+            <span id="connectionStatus">Connecting...</span>
+            <span style="margin-left: 20px;">Socket ID: <span id="socketId">-</span></span>
+        </div>
+        
+        <div id="messages">
+            <div class="message system">🔄 Waiting for connection...</div>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+            <input type="text" id="messageInput" placeholder="Type a test message...">
+            <button onclick="sendTestMessage()">Send Message</button>
+        </div>
+        
+        <div>
+            <button onclick="simulateStockUpdate()">📦 Simulate Stock Update</button>
+            <button onclick="clearMessages()">🧹 Clear Messages</button>
+            <button onclick="reconnect()">🔄 Reconnect</button>
+        </div>
+        
+        <div style="margin-top: 20px; font-size: 14px; color: #888;">
+            <p>Open this page in multiple browser tabs to see real-time updates across all tabs!</p>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        let socket;
+        const messagesDiv = document.getElementById('messages');
+        const statusDot = document.getElementById('statusDot');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const socketIdSpan = document.getElementById('socketId');
+        
+        function addMessage(text, type = 'info') {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${type}`;
+            msgDiv.innerHTML = `[${new Date().toLocaleTimeString()}] ${text}`;
+            messagesDiv.appendChild(msgDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        function connectWebSocket() {
+            socket = io('http://localhost:3000');
+            
+            socket.on('connect', () => {
+                statusDot.className = 'status connected';
+                connectionStatus.textContent = 'Connected';
+                socketIdSpan.textContent = socket.id;
+                addMessage(`✅ Connected to server! Your ID: ${socket.id}`, 'system');
+            });
+            
+            socket.on('welcome', (data) => {
+                addMessage(`🎉 Welcome! ${data.message}`, 'system');
+            });
+            
+            socket.on('user-joined', (data) => {
+                addMessage(`👋 ${data.message} (ID: ${data.socketId})`, 'info');
+            });
+            
+            socket.on('user-left', (data) => {
+                addMessage(`👋 ${data.message} (ID: ${data.socketId})`, 'info');
+            });
+            
+            socket.on('broadcast-message', (data) => {
+                addMessage(`💬 [${data.from}] ${data.text}`, 'info');
+            });
+            
+            socket.on('stock-changed', (data) => {
+                addMessage(`📊 STOCK UPDATE: ${data.productName} changed from ${data.oldQuantity} → ${data.newQuantity}`, 'stock');
+            });
+            
+            socket.on('product-created', (data) => {
+                addMessage(`🆕 NEW PRODUCT: ${data.productName} (Qty: ${data.quantity})`, 'system');
+            });
+            
+            socket.on('product-deleted', (data) => {
+                addMessage(`🗑️ PRODUCT DELETED: ${data.productName}`, 'system');
+            });
+            
+            socket.on('refresh-stock', (data) => {
+                addMessage(`🔄 EXTERNAL UPDATE: ${data.productName} stock is now ${data.newQuantity}`, 'stock');
+            });
+            
+            socket.on('stock-update-confirmed', (data) => {
+                addMessage(`✅ ${data.message}`, 'system');
+            });
+            
+            socket.on('disconnect', () => {
+                statusDot.className = 'status disconnected';
+                connectionStatus.textContent = 'Disconnected';
+                addMessage('❌ Disconnected from server', 'system');
+            });
+        }
+        
+        function sendTestMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (message && socket && socket.connected) {
+                socket.emit('test-message', message);
+                addMessage(`📤 You: ${message}`, 'info');
+                input.value = '';
+            }
+        }
+        
+        function simulateStockUpdate() {
+            if (socket && socket.connected) {
+                const fakeUpdate = {
+                    productId: 'test123',
+                    productName: 'Test Product',
+                    newQuantity: Math.floor(Math.random() * 100)
+                };
+                socket.emit('stock-updated', fakeUpdate);
+                addMessage(`📤 Simulating stock update: ${fakeUpdate.productName} → ${fakeUpdate.newQuantity}`, 'stock');
+            }
+        }
+        
+        function clearMessages() {
+            messagesDiv.innerHTML = '';
+            addMessage('🧹 Messages cleared', 'system');
+        }
+        
+        function reconnect() {
+            if (socket) {
+                socket.disconnect();
+                socket.connect();
+            } else {
+                connectWebSocket();
+            }
+        }
+        
+        // Start connection when page loads
+        connectWebSocket();
+        
+        // Allow Enter key to send message
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendTestMessage();
+        });
+    </script>
+</body>
+</html>
