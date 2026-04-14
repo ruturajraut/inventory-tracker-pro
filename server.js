@@ -1,13 +1,27 @@
 const express = require('express');
-const app = express();
-const PORT = 3000;
+const dotenv = require('dotenv');
+const connectDB = require('./config/db');
 
-// Basic route - This is what shows in the browser
+// Load environment variables
+dotenv.config();
+
+// Connect to MongoDB
+connectDB();
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Body parser middleware (allows us to read JSON data)
+app.use(express.json());
+
+// Basic route
 app.get('/', (req, res) => {
     res.send('✅ Inventory System Server is Running!');
 });
 
-// Start the server
+// Product routes
+app.use('/api/products', require('./routes/productRoutes'));
+
 app.listen(PORT, () => {
     console.log(`🚀 Server is live at http://localhost:${PORT}`);
 });
